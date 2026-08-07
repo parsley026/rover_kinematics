@@ -1,0 +1,5 @@
+launch:
+  - node:
+      pkg: rover_kinematics
+      exec: rover_kinematics_node
+      name: rover_kinematics_node
