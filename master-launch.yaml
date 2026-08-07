@@ -1,0 +1,5 @@
+# one to launch them all!
+
+launch:
+ - include:
+    file: "$(find-pkg-share rover_kinematics)/launch/base.yaml"

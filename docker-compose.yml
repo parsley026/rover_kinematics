@@ -1,0 +1,29 @@
+services:
+  rover-kinematics:
+    build:
+      context: .
+      dockerfile: ./.devcontainer/Dockerfile
+    image: rover-kinematics
+    container_name: rover-kinematics
+    hostname: rover-kinematics
+    init: true
+    network_mode: "host"
+    environment:
+      - TZ=Europe/Warsaw
+      - ROS_ENABLE_AUTOSTART=1
+      - ROS_BUILD_ON_STARTUP=on-failure
+    volumes:
+      - type: bind
+        source: ./
+        target: /home/rex/raptor_ws
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ./.devcontainer/rex
+        target: /etc/init.d/rex
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /dev/shm
+        target: /dev/shm
+    restart: unless-stopped
