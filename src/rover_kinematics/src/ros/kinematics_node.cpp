@@ -496,7 +496,7 @@ void KinematicsNode::statusCallback(
  */
 void KinematicsNode::cmdVelManualCallback(
     const rex_interfaces::msg::RoverControl::SharedPtr msg) {
-  if (control_mode_.load(std::memory_order_acquire) == ControlMode::DRIVE) {
+  if (control_mode_.load(std::memory_order_acquire) & ControlMode::DRIVE) {
     rex_interfaces::msg::RoverControl cmd_vel;
 
     cmd_vel.mode = msg->mode;
@@ -514,7 +514,7 @@ void KinematicsNode::cmdVelManualCallback(
  */
 void KinematicsNode::cmdVelAutonomyCallback(
     const geometry_msgs::msg::Twist::SharedPtr msg) {
-  if (control_mode_.load(std::memory_order_acquire) == ControlMode::DRIVE_AUTONOMY) {
+  if (control_mode_.load(std::memory_order_acquire) & ControlMode::DRIVE_AUTONOMY) {
     rex_interfaces::msg::RoverControl cmd_vel;
 
     cmd_vel.mode = DriveMode::SYM_ACKERMANN;
