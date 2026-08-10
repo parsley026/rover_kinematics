@@ -3,11 +3,18 @@ services:
     build:
       context: .
       dockerfile: ./.devcontainer/Dockerfile
+      args:
+        SSH_PORT: 2123
     image: rover-kinematics
     container_name: rover-kinematics
     hostname: rover-kinematics
+    stdin_open: true
+    tty: true
+    pid: "host"
+    ipc: "host"
     init: true
     network_mode: "host"
+    privileged: true
     environment:
       - TZ=Europe/Warsaw
       - ROS_ENABLE_AUTOSTART=1
@@ -15,7 +22,7 @@ services:
     volumes:
       - type: bind
         source: ./
-        target: /home/rex/raptor_ws
+        target: /mnt/local
         bind:
           create_host_path: true
       - type: bind

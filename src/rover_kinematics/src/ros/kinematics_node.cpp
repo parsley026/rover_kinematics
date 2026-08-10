@@ -219,6 +219,12 @@ KinematicsNode::assembleWheelsFromCommand(const WheelCommand &command, const rcl
     w->turn.set_value   = hardware_interface_.steeringSetFromRadians(command.steering_angle_rad[i], i);
   }
 
+  std::cout << "Assembled Wheels Message: " << std::endl;
+  std::cout << "Front Left: Drive RPM = " << msg.front_left.drive.set_value << ", Turn Pos = " << msg.front_left.turn.set_value << std::endl;
+  std::cout << "Front Right: Drive RPM = " << msg.front_right.drive.set_value << ", Turn Pos = " << msg.front_right.turn.set_value << std::endl;
+  std::cout << "Rear Left: Drive RPM = " << msg.rear_left.drive.set_value << ", Turn Pos = " << msg.rear_left.turn.set_value << std::endl;
+  std::cout << "Rear Right: Drive RPM = " << msg.rear_right.drive .set_value << ", Turn Pos = " << msg.rear_right.turn.set_value << std::endl;
+
   return msg;
 }
 
@@ -474,6 +480,12 @@ void KinematicsNode::onUpdate() {
     target_wheels_msg = assembleStopMessage(current_time);
   }
 
+  std::cout << "Publishing Wheels Message: " << std::endl;
+  std::cout << "Front Left: Drive RPM = " << target_wheels_msg.front_left.drive.set_value << ", Turn Pos = " << target_wheels_msg.front_left.turn.set_value << std::endl;
+  std::cout << "Front Right: Drive RPM = " << target_wheels_msg.front_right.drive.set_value << ", Turn Pos = " << target_wheels_msg.front_right.turn.set_value << std::endl;
+  std::cout << "Rear Left: Drive RPM = " << target_wheels_msg.rear_left.drive.set_value << ", Turn Pos = " << target_wheels_msg.rear_left.turn.set_value << std::endl;
+  std::cout << "Rear Right: Drive RPM = " << target_wheels_msg.rear_right.drive.set_value << ", Turn Pos = " << target_wheels_msg.rear_right.turn.set_value << std::endl;
+
   rover_wheels_velocity_ = target_wheels_msg;
   wheels_vel_pub_->publish(rover_wheels_velocity_);
 }
@@ -505,6 +517,11 @@ void KinematicsNode::cmdVelManualCallback(
     cmd_vel.y_axis = msg->y_axis;
     cmd_vel.x_axis = msg->x_axis;
 
+    std::cout << "Received Manual Command: Mode = " << cmd_vel.mode
+              << ", Vel = " << cmd_vel.vel
+              << ", Y Axis = " << cmd_vel.y_axis
+              << ", X Axis = " << cmd_vel.x_axis << std::endl;
+
     rover_cmd_velocity_buffer_.writeFromNonRT(cmd_vel);
   }
 }
@@ -522,6 +539,11 @@ void KinematicsNode::cmdVelAutonomyCallback(
     cmd_vel.vel    = msg->linear.x;
     cmd_vel.y_axis = msg->linear.y;
     cmd_vel.x_axis = msg->angular.z;
+
+    std::cout << "Received Autonomy Command: Mode = " << cmd_vel.mode
+              << ", Vel = " << cmd_vel.vel
+              << ", Y Axis = " << cmd_vel.y_axis
+              << ", X Axis = " << cmd_vel.x_axis << std::endl;
 
     rover_cmd_velocity_buffer_.writeFromNonRT(cmd_vel);
   }
@@ -571,8 +593,15 @@ void KinematicsNode::feedbackCallback(
   rover_wheels_velocity_feedback_buffer_.writeFromNonRT(current_feedback);
 
   last_feedback_time_ns_.store(measurement_time.nanoseconds(), std::memory_order_release);
-  feedback_stale_.store(false, std::memory_order_release);
-  communication_state_.store(CommunicationState::OPENED, std::memory_order_release);
+  // feedback_stale_.store(false, std::memory_order_release);
+  // communication_state_.store(CommunicationState::OPENED, std::memory_order_release);
+
+  std::cout << "Received Feedback: VESC ID = " << static_cast<int>(id)
+            << ", ERPM = " << msg->erpm
+            << ", Precise Pos = " << msg->precise_pos
+            << ", Current = " << msg->current
+            << ", Duty Cycle = " << msg->duty_cycle
+            << std::endl;
 }
 
 //
