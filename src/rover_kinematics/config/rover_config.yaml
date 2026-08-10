@@ -32,13 +32,13 @@ wheels_distance_length: 0.900
 wheels_distance_width:  0.654
 wheel_diameter: 0.25
 
-poles_pair_number: 15         
-motor_gear_ratio: 1.0        
-min_erpm: 0.0
+poles_pair_number: 7         
+motor_gear_ratio: 31.0        
+min_erpm: 450.0
 max_erpm: 100000.0             
 velocity_limit: 1.0          
 publish_rate: 20.0           
-use_sim_time: true           
+use_sim_time: false           
 feedback_timeout_sec: 0.5    
 
 max_mechanical_angle: 1.57
