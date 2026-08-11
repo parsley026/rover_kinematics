@@ -59,6 +59,10 @@ public:
   WheelCommand computeYConfiguration() const;
   WheelCommand computeReverseYConfiguration() const;
 
+  // - - -
+
+  WheelCommand computeSamplerConfiguration() const;
+
 private:
   KinematicsConfig config_;
 

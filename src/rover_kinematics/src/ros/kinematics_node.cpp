@@ -216,14 +216,27 @@ KinematicsNode::assembleWheelsFromCommand(const WheelCommand &command, const rcl
     w->drive.set_value  = hardware_interface_.driveSetFromMetersPerSecond(command.drive_velocity_mps[i], i);
 
     w->turn.command_id  = VescCommand::SET_POS;
-    w->turn.set_value   = hardware_interface_.steeringSetFromRadians(command.steering_angle_rad[i], i);
+    w->turn.set_value   = hardware_interface_.steeringSetFromRadians(command.steering_angle_rad[i] * STEER_PRESCALE, i);
   }
 
-  std::cout << "Assembled Wheels Message: " << std::endl;
-  std::cout << "Front Left: Drive RPM = " << msg.front_left.drive.set_value << ", Turn Pos = " << msg.front_left.turn.set_value << std::endl;
-  std::cout << "Front Right: Drive RPM = " << msg.front_right.drive.set_value << ", Turn Pos = " << msg.front_right.turn.set_value << std::endl;
-  std::cout << "Rear Left: Drive RPM = " << msg.rear_left.drive.set_value << ", Turn Pos = " << msg.rear_left.turn.set_value << std::endl;
-  std::cout << "Rear Right: Drive RPM = " << msg.rear_right.drive .set_value << ", Turn Pos = " << msg.rear_right.turn.set_value << std::endl;
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Assembled Wheels Message:");
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Front Left: Drive RPM = %f, Turn Pos = %f",
+                       msg.front_left.drive.set_value,
+                       msg.front_left.turn.set_value);
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Front Right: Drive RPM = %f, Turn Pos = %f",
+                       msg.front_right.drive.set_value,
+                       msg.front_right.turn.set_value);
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Rear Left: Drive RPM = %f, Turn Pos = %f",
+                       msg.rear_left.drive.set_value,
+                       msg.rear_left.turn.set_value);
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Rear Right: Drive RPM = %f, Turn Pos = %f",
+                       msg.rear_right.drive.set_value,
+                       msg.rear_right.turn.set_value);
 
   return msg;
 }
@@ -435,10 +448,10 @@ void KinematicsNode::onUpdate() {
     // case ControlMode::ROBOTIC_ARM:
     //   break;
     case ControlMode::DEEP_SAMPLER:
-      target_ik = kinematics_solver_.computeXConfiguration();
+      target_ik = kinematics_solver_.computeSamplerConfiguration();
       break;
     case ControlMode::SURFACE_SAMPLER:
-      target_ik = kinematics_solver_.computeXConfiguration();
+      target_ik = kinematics_solver_.computeSamplerConfiguration();
       break;
     case ControlMode::DRIVE_AUTONOMY:
       strategy_key = ControlMode::DRIVE_AUTONOMY;
@@ -446,10 +459,10 @@ void KinematicsNode::onUpdate() {
     // case ControlMode::ROBOTIC_ARM_AUTONOMY:
     //   break;
     case ControlMode::DEEP_SAMPLER_AUTONOMY:
-      target_ik = kinematics_solver_.computeXConfiguration();
+      target_ik = kinematics_solver_.computeSamplerConfiguration();
       break;
     case ControlMode::SURFACE_SAMPLER_AUTONOMY:
-      target_ik = kinematics_solver_.computeXConfiguration();
+      target_ik = kinematics_solver_.computeSamplerConfiguration();
       break;
       
     default:
@@ -480,11 +493,24 @@ void KinematicsNode::onUpdate() {
     target_wheels_msg = assembleStopMessage(current_time);
   }
 
-  std::cout << "Publishing Wheels Message: " << std::endl;
-  std::cout << "Front Left: Drive RPM = " << target_wheels_msg.front_left.drive.set_value << ", Turn Pos = " << target_wheels_msg.front_left.turn.set_value << std::endl;
-  std::cout << "Front Right: Drive RPM = " << target_wheels_msg.front_right.drive.set_value << ", Turn Pos = " << target_wheels_msg.front_right.turn.set_value << std::endl;
-  std::cout << "Rear Left: Drive RPM = " << target_wheels_msg.rear_left.drive.set_value << ", Turn Pos = " << target_wheels_msg.rear_left.turn.set_value << std::endl;
-  std::cout << "Rear Right: Drive RPM = " << target_wheels_msg.rear_right.drive.set_value << ", Turn Pos = " << target_wheels_msg.rear_right.turn.set_value << std::endl;
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Publishing Wheels Message:");
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Front Left: Drive RPM = %f, Turn Pos = %f",
+                       target_wheels_msg.front_left.drive.set_value,
+                       target_wheels_msg.front_left.turn.set_value);
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Front Right: Drive RPM = %f, Turn Pos = %f",
+                       target_wheels_msg.front_right.drive.set_value,
+                       target_wheels_msg.front_right.turn.set_value);
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Rear Left: Drive RPM = %f, Turn Pos = %f",
+                       target_wheels_msg.rear_left.drive.set_value,
+                       target_wheels_msg.rear_left.turn.set_value);
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Rear Right: Drive RPM = %f, Turn Pos = %f",
+                       target_wheels_msg.rear_right.drive.set_value,
+                       target_wheels_msg.rear_right.turn.set_value);
 
   rover_wheels_velocity_ = target_wheels_msg;
   wheels_vel_pub_->publish(rover_wheels_velocity_);
@@ -517,10 +543,10 @@ void KinematicsNode::cmdVelManualCallback(
     cmd_vel.y_axis = msg->y_axis;
     cmd_vel.x_axis = msg->x_axis;
 
-    std::cout << "Received Manual Command: Mode = " << cmd_vel.mode
-              << ", Vel = " << cmd_vel.vel
-              << ", Y Axis = " << cmd_vel.y_axis
-              << ", X Axis = " << cmd_vel.x_axis << std::endl;
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+               "Received Manual Command: Mode = %d, Vel = %f, Y Axis = %f, X Axis = %f",
+               static_cast<int>(cmd_vel.mode), cmd_vel.vel,
+               cmd_vel.y_axis, cmd_vel.x_axis);
 
     rover_cmd_velocity_buffer_.writeFromNonRT(cmd_vel);
   }
@@ -540,10 +566,10 @@ void KinematicsNode::cmdVelAutonomyCallback(
     cmd_vel.y_axis = msg->linear.y;
     cmd_vel.x_axis = msg->angular.z;
 
-    std::cout << "Received Autonomy Command: Mode = " << cmd_vel.mode
-              << ", Vel = " << cmd_vel.vel
-              << ", Y Axis = " << cmd_vel.y_axis
-              << ", X Axis = " << cmd_vel.x_axis << std::endl;
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+               "Received Autonomy Command: Mode = %d, Vel = %f, Y Axis = %f, X Axis = %f",
+               static_cast<int>(cmd_vel.mode), cmd_vel.vel,
+               cmd_vel.y_axis, cmd_vel.x_axis);
 
     rover_cmd_velocity_buffer_.writeFromNonRT(cmd_vel);
   }
@@ -596,12 +622,10 @@ void KinematicsNode::feedbackCallback(
   // feedback_stale_.store(false, std::memory_order_release);
   // communication_state_.store(CommunicationState::OPENED, std::memory_order_release);
 
-  std::cout << "Received Feedback: VESC ID = " << static_cast<int>(id)
-            << ", ERPM = " << msg->erpm
-            << ", Precise Pos = " << msg->precise_pos
-            << ", Current = " << msg->current
-            << ", Duty Cycle = " << msg->duty_cycle
-            << std::endl;
+  RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                       "Received Feedback: VESC ID = %d, ERPM = %d, Precise Pos = %f, Current = %f, Duty Cycle = %f",
+                       static_cast<int>(id), msg->erpm, msg->precise_pos,
+                       msg->current, msg->duty_cycle);
 }
 
 //

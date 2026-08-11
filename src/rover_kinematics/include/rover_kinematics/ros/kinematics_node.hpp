@@ -120,6 +120,7 @@ constexpr int KinematicsControlModeMask = build_mask(KinematicsControlMode);
 constexpr uint8_t CURRENT_BRAKE_VALUE     = 5;
 constexpr uint8_t CURRENT_HANDBRAKE_VALUE = 10;
 
+#define STEER_PRESCALE 0.01
 
 class KinematicsNode : public rclcpp::Node {
 public:

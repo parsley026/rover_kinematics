@@ -375,3 +375,22 @@ WheelCommand KinematicsSolver::computeReverseYConfiguration() const {
 
   return command;
 }
+
+
+WheelCommand KinematicsSolver::computeSamplerConfiguration() const {
+  WheelCommand command;
+
+  const double half_wb = config_.wheelbase() / 2.0;
+  const double half_tw = config_.track_width() / 2.0;
+
+  const double theta_spin_rad = std::atan2(half_wb, half_tw);
+
+  command.steering_angle_rad[0] = theta_spin_rad;         // FL
+  command.steering_angle_rad[1] = -theta_spin_rad;        // FR
+  command.steering_angle_rad[2] = std::numbers::pi;       // RL
+  command.steering_angle_rad[3] = -std::numbers::pi;      // RR
+
+  command.drive_velocity_mps.fill(0.0);
+
+  return command;
+}

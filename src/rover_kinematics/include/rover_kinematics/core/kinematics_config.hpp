@@ -281,9 +281,9 @@ private:
 
     // ── Fields — Motor polarity ───────────────────────────────────────────────
     bool invert_right_drive_    {false};
-    bool invert_right_steering_ {false};
+    bool invert_right_steering_ {true};
     bool invert_left_drive_     {false};
-    bool invert_left_steering_  {false};
+    bool invert_left_steering_  {true};
 
     // ── Fields — Covariance ───────────────────────────────────────────────────
     std::vector<double> pose_covariance_diagonal_  {0.001, 0.001, 0.001, 0.001, 0.001, 0.001};

@@ -74,6 +74,9 @@ wheel_quality_high_current_threshold: 20.0
 wheel_quality_high_duty_threshold: 0.85
 wheel_quality_min_weight: 0.0
 
+invert_left_steering: true
+invert_right_steering: true
+
 cmd_vel_autonomy_topic: '/cmd_vel'
 # cmd_vel_autonomy_topic: '/cmd_vel_smoothed'
 
