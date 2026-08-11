@@ -1,5 +1,7 @@
 FROM wisniax/ros-rover-base:latest
 
+USER root
+
 # Dockerfile for ROS-JAZZY
 ARG USERNAME='rex'
 ARG PASSWORD='changeme'
