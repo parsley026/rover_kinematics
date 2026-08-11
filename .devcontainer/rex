@@ -50,7 +50,11 @@ case "$1" in
 		# try to stop already running instance (if any)
 		stop_rex
 		# start rexlaunch.sh, with user rex and GID 1000, in the context of raptor_ws
-		if start-stop-daemon --start --oknodo --chuid rex:1000 --user rex --group 1000 -d /home/rex/raptor_ws/ --exec /bin/sh .devcontainer/rexlaunch.sh; then
+		if start-stop-daemon --start --oknodo \
+			--chuid rex:1000 --group 1000 \
+			--chdir /home/rex/raptor_ws \
+			--pidfile /tmp/rexlaunch.pgid \
+			--startas /bin/sh -- .devcontainer/rexlaunch.sh; then
 			log_daemon_msg "Started REX ROS2 stuff!" "rex" || true
 			# log success
 			log_end_msg 0 || true
