@@ -126,6 +126,10 @@ class KinematicsNode : public rclcpp::Node {
 public:
   explicit KinematicsNode(const rclcpp::NodeOptions &options);
 
+  void applySteeringFirstSafety(rex_interfaces::msg::Wheels &target,
+                                const rex_interfaces::msg::Wheels &feedback,
+                                double angle_tolerance_deg = 2.5);
+
 private:
   void initCmdVelBuffer();
   void initFeedbackBuffer();
@@ -157,7 +161,7 @@ private:
   void updateWheelQuality(std::size_t wheel_index, const rex_interfaces::msg::VescStatus &status);
 
   // // ─ ─ 
-  
+
   rex_interfaces::msg::Wheels assembleWheelsFromCommand(const WheelCommand &command, const rclcpp::Time &time);
 
   rex_interfaces::msg::Wheels assembleSetOriginMessage(const rclcpp::Time &time);

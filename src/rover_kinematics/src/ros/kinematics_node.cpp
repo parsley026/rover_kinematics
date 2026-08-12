@@ -328,6 +328,66 @@ void KinematicsNode::updateWatchdog(const rclcpp::Time &current_time) {
   }
 }
 
+void KinematicsNode::applySteeringFirstSafety(
+    rex_interfaces::msg::Wheels &target,
+    const rex_interfaces::msg::Wheels &feedback,
+    double angle_tolerance_deg) {
+  const auto normalize_for_wheel = [&](double value, std::size_t wheel_index) {
+    double normalized = value;
+    const bool is_right = (wheel_index == 1 || wheel_index == 3);
+
+    if (is_right && config_.invert_right_steering()) {
+      normalized = -normalized;
+    }
+    if (!is_right && config_.invert_left_steering()) {
+      normalized = -normalized;
+    }
+
+    return normalized;
+  };
+
+  const auto steer_ok = [&](double target_value, double measured_value,
+                           std::size_t wheel_index) {
+    const double target_normalized = normalize_for_wheel(
+        target_value / static_cast<double>(STEER_PRESCALE), wheel_index);
+    const double measured_normalized = normalize_for_wheel(measured_value, wheel_index);
+
+    // Some steering setups report the encoder with the opposite sign convention.
+    // Accept either the direct sign or the inverted sign so a configured wheel
+    // inversion does not trip the safety when the wheel is already at the target
+    // angle.
+    const double direct_error_deg = std::abs(target_normalized - measured_normalized);
+    const double flipped_error_deg = std::abs(target_normalized + measured_normalized);
+    const double error_deg = std::min(direct_error_deg, flipped_error_deg);
+
+    return error_deg <= std::max(0.0, angle_tolerance_deg);
+  };
+
+  const bool ready = steer_ok(target.front_left.turn.set_value, feedback.front_left.turn.set_value, 0) &&
+                     steer_ok(target.front_right.turn.set_value, feedback.front_right.turn.set_value, 1) &&
+                     steer_ok(target.rear_left.turn.set_value, feedback.rear_left.turn.set_value, 2) &&
+                     steer_ok(target.rear_right.turn.set_value, feedback.rear_right.turn.set_value, 3);
+
+  if (!ready) {
+    target.front_left.drive.set_value = 0.0;
+    target.front_right.drive.set_value = 0.0;
+    target.rear_left.drive.set_value = 0.0;
+    target.rear_right.drive.set_value = 0.0;
+
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                         "Steering-first safety active: blocking drive until steering reaches target. "
+                         "target=[%.2f, %.2f, %.2f, %.2f], measured=[%.2f, %.2f, %.2f, %.2f]",
+                         normalize_for_wheel(target.front_left.turn.set_value / static_cast<double>(STEER_PRESCALE), 0),
+                         normalize_for_wheel(target.front_right.turn.set_value / static_cast<double>(STEER_PRESCALE), 1),
+                         normalize_for_wheel(target.rear_left.turn.set_value / static_cast<double>(STEER_PRESCALE), 2),
+                         normalize_for_wheel(target.rear_right.turn.set_value / static_cast<double>(STEER_PRESCALE), 3),
+                         normalize_for_wheel(feedback.front_left.turn.set_value, 0),
+                         normalize_for_wheel(feedback.front_right.turn.set_value, 1),
+                         normalize_for_wheel(feedback.rear_left.turn.set_value, 2),
+                         normalize_for_wheel(feedback.rear_right.turn.set_value, 3));
+  }
+}
+
 //
 // // ─ ─ Loop ─ ─
 //
@@ -511,6 +571,22 @@ void KinematicsNode::onUpdate() {
                        "Rear Right: Drive RPM = %f, Turn Pos = %f",
                        target_wheels_msg.rear_right.drive.set_value,
                        target_wheels_msg.rear_right.turn.set_value);
+
+  // Keep the drive torque off until the steering has reached the commanded
+  // angle for any drive mode. This prevents the rover from applying wheel
+  // velocity while the steering is still moving between the previous and next
+  // target orientation, which can damage the robot when switching back to an
+  // Ackermann or crab/spin mode.
+  const bool is_drive_mode = (control_mode_.load(std::memory_order_acquire) & ControlMode::DRIVE) != 0;
+  const bool requires_steering_alignment = is_drive_mode &&
+      cmd.mode != DriveMode::BRAKE &&
+      cmd.mode != DriveMode::HANDBRAKE &&
+      cmd.mode != 0;
+
+  if (requires_steering_alignment) {
+    const auto feedback_msg = *(rover_wheels_velocity_feedback_buffer_.readFromNonRT());
+    applySteeringFirstSafety(target_wheels_msg, feedback_msg, 2.5);
+  }
 
   rover_wheels_velocity_ = target_wheels_msg;
   wheels_vel_pub_->publish(rover_wheels_velocity_);
