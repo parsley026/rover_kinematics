@@ -1,47 +1,46 @@
-# ---
-# wheels_distance_length: 0.99  # [m]
-# wheels_distance_width: 0.74 # [m] 
-# wheel_diameter: 0.24         # [m]
-# poles_pair_number: 15        # Number of poles in the motor
-# velocity_limit: 1.0          # [m/s]
-# publish_rate: 20.0           # [Hz] (Recommended: 20.0, Maximum: 50.0)
-# use_sim_time: true          # Use simulation time
+use_sim_time: false           
 
-
-# max_steering_radius: 5.0     # [m] Maximum steering radius of the robot
-# min_steering_radius: 1.0     # [m] Minimum steering radius of the robot
-
-# # Odometry covariances for the encoder output of the robot. These values should
-# # be tuned to your robot's sample odometry data, but these values are a good place
-# # to start
-# #                          [x,     y,     z,     roll,  pitch, yaw]
-# pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]  
-# twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
-
-# # Top level frame (link) of the robot description
-# base_frame_id: '/base_link'  # Base frame id
-
-# # Transform from odom -> base_link: Enable if NOT:
-# # using ekf_localization or simulation source
-# odom_frame_id: '/odom'      # Odom frame id
-# enable_odom_tf: false       # Enable odom -> base_link transform (true - real robot, false - simulation)
-
----
-
+# Update (based on real)
 wheels_distance_length: 0.900
 wheels_distance_width:  0.654
 wheel_diameter: 0.25
 
 poles_pair_number: 7         
-motor_gear_ratio: 31.0        
-min_erpm: 450.0
-max_erpm: 100000.0             
-velocity_limit: 1.0          
-publish_rate: 20.0           
-use_sim_time: false           
-feedback_timeout_sec: 0.5    
+motor_gear_ratio: 25.0        
 
-max_mechanical_angle: 1.57
+min_erpm: 450.0
+max_erpm: 100000.0        
+
+initialization_timeout_sec: 5.0
+stop_timeout_sec: 5.0
+
+feedback_timeout_sec: 0.5
+
+publish_rate: 20.0       
+
+# Steer angle max limit - per wheel [fl=front-left, fr=front-right, rl=rear-left, rr=rear-right]
+max_mechanical_angle_fl:  1.57   # [rad]
+max_mechanical_angle_fr:  1.57   # [rad]
+max_mechanical_angle_rl:  1.57   # [rad]
+max_mechanical_angle_rr:  1.57   # [rad]
+
+# Steer angle min limit - per wheel [fl=front-left, fr=front-right, rl=rear-left, rr=rear-right]
+min_mechanical_angle_fl: -1.57   # [rad]
+min_mechanical_angle_fr: -1.57   # [rad]
+min_mechanical_angle_rl: -1.57   # [rad]
+min_mechanical_angle_rr: -1.57   # [rad]
+
+# Motor polarity — per wheel [fl=front-left, fr=front-right, rl=rear-left, rr=rear-right]
+invert_drive_fl: false
+invert_drive_fr: false
+invert_drive_rl: false
+invert_drive_rr: false
+
+# Steer polarity — per wheel [fl=front-left, fr=front-right, rl=rear-left, rr=rear-right]
+invert_steering_fl: true
+invert_steering_fr: true
+invert_steering_rl: true
+invert_steering_rr: true
 
 max_steering_radius: 5.0    
 min_steering_radius: 1.0     
@@ -50,12 +49,24 @@ pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
 twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
 
 base_frame_id: '/base_link'
+odom_frame_id: '/odom' 
+publish_tf: false
 
-odom_frame_id: '/odom'      
-enable_odom_tf: false
+cmd_vel_timeout_sec: 0.5
 
-use_measurement_timestamp: false
+cmd_vel_autonomy_topic: '/navigation/cmd_vel'
+# cmd_vel_autonomy_topic: '/cmd_vel_smoothed'
 
+# ── Steering coherence safety ──────────────────────────────────────────────────
+# Fits a rigid-body twist to the four steering feedback angles each cycle.
+# If the mean normalised residual exceeds the threshold, drive is suppressed
+# until the wheels realign (e.g. when exiting spin mode).
+# Range: (0.0, 1.0].  Lower = stricter.  0.15 blocks drive when wheels are
+# more than ~22° incoherent on average.
+enable_coherence_safety: true
+steering_coherence_threshold: 0.15
+
+# # # # Update (base on real)
 huber_loss_threshold: 0.5
 twist_ema_alpha: 0.8
 se2_integration_omega_threshold: 1.0e-4
@@ -67,44 +78,16 @@ solver_parameter_tolerance: 1.0e-9
 solver_minimizer_progress_to_stdout: false
 solver_linear_solver_type: 'DENSE_QR'
 solver_trust_region_strategy_type: 'DOGLEG'
+# # # #
 
+# # # # Unfinished
+use_measurement_timestamp: false
+# # # #
+
+# # # # Unfinished
 enable_dynamic_wheel_weighting: false
 wheel_quality_low_erpm_threshold: 500.0
 wheel_quality_high_current_threshold: 20.0
 wheel_quality_high_duty_threshold: 0.85
 wheel_quality_min_weight: 0.0
-
-invert_left_steering: true
-invert_right_steering: true
-
-cmd_vel_autonomy_topic: '/cmd_vel'
-# cmd_vel_autonomy_topic: '/cmd_vel_smoothed'
-
----
-
-# wheels_distance_length: 0.77 # Scaled down from 0.90 for effective slip footprint
-# wheels_distance_width: 0.574 # Scaled down from 0.654 for effective slip footprint
-# wheel_diameter: 0.25         # [m] Calculated from wheel cylinder radius
-# poles_pair_number: 15        # Hardware specific (Retained from original)
-# motor_gear_ratio: 1.0        # Hardware specific (Retained from original)
-# min_erpm: 0.0                # Hardware specific (Retained from original)
-# velocity_limit: 1.0          # [m/s] System safety limit (Retained from original)
-# publish_rate: 20.0           # [Hz] (Recommended: 20.0, Maximum: 50.0)
-# use_sim_time: true           # Use simulation time
-# feedback_timeout_sec: 0.5    # [s] Stale feedback timeout
-
-# max_steering_radius: 5.0     # [m] Maximum steering radius of the robot
-# min_steering_radius: 1.0     # [m] Minimum steering radius of the robot
-
-# # Odometry covariances for the encoder output of the robot.
-# #                          [x,     y,     z,     roll,  pitch, yaw]
-# pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]  
-# twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.03]
-
-# # Top level frame (link) of the robot description
-# base_frame_id: '/base_link'
-
-# # Transform from odom -> base_link: Enable if NOT:
-# # using ekf_localization or simulation source
-# odom_frame_id: '/odom'      # Odom frame id
-# enable_odom_tf: false       # Enable odom -> base_link transform (true - real robot, false - simulation)
+# # # #

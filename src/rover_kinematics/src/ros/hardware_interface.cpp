@@ -68,10 +68,7 @@ HardwareInterface::metersPerSecondFromErpm(double erpm,
   double mps = angular_velocity_rad_s * config_.wheel_radius();
 
   // Step 5: Apply drive polarity inversion if configured
-  bool is_right = (wheel_index == 1 || wheel_index == 3);
-  if (is_right && config_.invert_right_drive())
-    mps = -mps;
-  if (!is_right && config_.invert_left_drive())
+  if (config_.invert_drive(wheel_index))
     mps = -mps;
 
   return mps;
@@ -108,10 +105,7 @@ HardwareInterface::driveSetFromMetersPerSecond(double mps,
   double set_value = target_erpm + (sign_offset * config_.min_erpm());
 
   // Step 5: Apply drive polarity inversion if configured
-  bool is_right = (wheel_index == 1 || wheel_index == 3);
-  if (is_right && config_.invert_right_drive())
-    set_value = -set_value;
-  if (!is_right && config_.invert_left_drive())
+  if (config_.invert_drive(wheel_index))
     set_value = -set_value;
 
   return set_value;
@@ -129,10 +123,7 @@ HardwareInterface::steeringSetFromRadians(double rad,
                                           std::size_t wheel_index) const {
   double deg = rad * (180.0 / M_PI);
 
-  bool is_right = (wheel_index == 1 || wheel_index == 3);
-  if (is_right && config_.invert_right_steering())
-    deg = -deg;
-  if (!is_right && config_.invert_left_steering())
+  if (config_.invert_steering(wheel_index))
     deg = -deg;
 
   return deg;
@@ -151,10 +142,7 @@ HardwareInterface::steeringSetFromPrecisePos(double precise_pos,
                                              std::size_t wheel_index) const {
   double val = precise_pos;
 
-  bool is_right = (wheel_index == 1 || wheel_index == 3);
-  if (is_right && config_.invert_right_steering())
-    val = -val;
-  if (!is_right && config_.invert_left_steering())
+  if (config_.invert_steering(wheel_index))
     val = -val;
 
   return val;

@@ -106,17 +106,21 @@ public:
     double max_wheel_speed_mps()const { return max_wheel_speed_mps_; }
 
     // ── Getters — Steering geometry ───────────────────────────────────────────
-    double max_mechanical_angle()   const { return max_mechanical_angle_; }
+    /// Per-wheel mechanical angle limits [FL=0, FR=1, RL=2, RR=3] (radians).
+    double min_mechanical_angle(std::size_t wheel = 0) const { return min_mechanical_angle_[wheel]; }
+    double max_mechanical_angle(std::size_t wheel = 0) const { return max_mechanical_angle_[wheel]; }
+    const std::array<double, 4>& min_mechanical_angles() const { return min_mechanical_angle_; }
+    const std::array<double, 4>& max_mechanical_angles() const { return max_mechanical_angle_; }
     double max_steering_radius()    const { return max_steering_radius_; }
     double min_steering_radius()    const { return min_steering_radius_; }
     double max_steering_angle_deg() const { return max_steering_angle_deg_; }
     double max_steering_angle_rad() const { return max_steering_angle_rad_; }
 
-    // ── Getters — Motor polarity ──────────────────────────────────────────────
-    bool invert_right_drive()    const { return invert_right_drive_; }
-    bool invert_right_steering() const { return invert_right_steering_; }
-    bool invert_left_drive()     const { return invert_left_drive_; }
-    bool invert_left_steering()  const { return invert_left_steering_; }
+    // ── Getters — Motor polarity (per-wheel: FL=0, FR=1, RL=2, RR=3) ───────────────
+    bool invert_drive(std::size_t wheel)    const { return invert_drive_[wheel]; }
+    bool invert_steering(std::size_t wheel) const { return invert_steering_[wheel]; }
+    const std::array<bool, 4>& invert_drive_arr()    const { return invert_drive_; }
+    const std::array<bool, 4>& invert_steering_arr() const { return invert_steering_; }
 
     // ── Getters — Covariance ──────────────────────────────────────────────────
     const std::vector<double>& pose_covariance_diagonal()  const { return pose_covariance_diagonal_; }
@@ -132,9 +136,12 @@ public:
     bool               use_sim_time()              const { return use_sim_time_; }
     const std::string& base_frame_id()             const { return base_frame_id_; }
     const std::string& odom_frame_id()             const { return odom_frame_id_; }
-    bool               enable_odom_tf()            const { return enable_odom_tf_; }
+    bool               publish_tf()            const { return publish_tf_; }
     bool               use_measurement_timestamp() const { return use_measurement_timestamp_; }
     const std::string& cmd_vel_autonomy_topic()    const { return cmd_vel_autonomy_topic_; }
+    double             cmd_vel_timeout_sec()       const { return cmd_vel_timeout_sec_; }
+    double             initialization_timeout_sec()const { return initialization_timeout_sec_; }
+    double             stop_timeout_sec()          const { return stop_timeout_sec_; }
 
     // ── Getters — Estimator tuning ────────────────────────────────────────────
     double huber_loss_threshold()            const { return huber_loss_threshold_; }
@@ -148,6 +155,10 @@ public:
     double wheel_quality_high_current_threshold() const { return wheel_quality_high_current_threshold_; }
     double wheel_quality_high_duty_threshold()    const { return wheel_quality_high_duty_threshold_; }
     double wheel_quality_min_weight()             const { return wheel_quality_min_weight_; }
+
+    // ── Getters — Coherence safety ──────────────────────────────────────
+    bool   enable_coherence_safety()          const { return enable_coherence_safety_; }
+    double steering_coherence_threshold()     const { return steering_coherence_threshold_; }
 
     // ── Getters — Ceres solver ────────────────────────────────────────────────
     int    solver_max_num_iterations()           const { return solver_max_num_iterations_; }
@@ -188,19 +199,44 @@ private:
         tryLoad(config, "min_erpm",           min_erpm_);
         tryLoad(config, "max_erpm",           max_erpm_);
 
-        tryLoad(config, "max_mechanical_angle", max_mechanical_angle_);
+        // Per-wheel mechanical angle limits [fl=0, fr=1, rl=2, rr=3].
+        // Defaults (±1.57 rad) are set in the field initialiser.
+        tryLoad(config, "min_mechanical_angle_fl", min_mechanical_angle_[0]);
+        tryLoad(config, "min_mechanical_angle_fr", min_mechanical_angle_[1]);
+        tryLoad(config, "min_mechanical_angle_rl", min_mechanical_angle_[2]);
+        tryLoad(config, "min_mechanical_angle_rr", min_mechanical_angle_[3]);
+
+        tryLoad(config, "max_mechanical_angle_fl", max_mechanical_angle_[0]);
+        tryLoad(config, "max_mechanical_angle_fr", max_mechanical_angle_[1]);
+        tryLoad(config, "max_mechanical_angle_rl", max_mechanical_angle_[2]);
+        tryLoad(config, "max_mechanical_angle_rr", max_mechanical_angle_[3]);
+        
         tryLoad(config, "max_steering_radius",  max_steering_radius_);
         tryLoad(config, "min_steering_radius",  min_steering_radius_);
+
+        // Per-wheel polarity — [FL=0, FR=1, RL=2, RR=3]
+        // drive defaults: all false  |  steering defaults: all true
+        tryLoad(config, "invert_drive_fl",    invert_drive_[0]);
+        tryLoad(config, "invert_drive_fr",    invert_drive_[1]);
+        tryLoad(config, "invert_drive_rl",    invert_drive_[2]);
+        tryLoad(config, "invert_drive_rr",    invert_drive_[3]);
+        tryLoad(config, "invert_steering_fl", invert_steering_[0]);
+        tryLoad(config, "invert_steering_fr", invert_steering_[1]);
+        tryLoad(config, "invert_steering_rl", invert_steering_[2]);
+        tryLoad(config, "invert_steering_rr", invert_steering_[3]);
 
         tryLoad(config, "pose_covariance_diagonal",  pose_covariance_diagonal_);
         tryLoad(config, "twist_covariance_diagonal", twist_covariance_diagonal_);
 
         tryLoad(config, "publish_rate",             publish_rate_);
         tryLoad(config, "feedback_timeout_sec",     feedback_timeout_sec_);
+        tryLoad(config, "cmd_vel_timeout_sec",      cmd_vel_timeout_sec_);
+        tryLoad(config, "initialization_timeout_sec", initialization_timeout_sec_);
+        tryLoad(config, "stop_timeout_sec",         stop_timeout_sec_);
         tryLoad(config, "use_sim_time",             use_sim_time_);
         tryLoad(config, "base_frame_id",            base_frame_id_);
         tryLoad(config, "odom_frame_id",            odom_frame_id_);
-        tryLoad(config, "enable_odom_tf",           enable_odom_tf_);
+        tryLoad(config, "publish_tf",           publish_tf_);
         tryLoad(config, "use_measurement_timestamp", use_measurement_timestamp_);
 
         tryLoad(config, "huber_loss_threshold",            huber_loss_threshold_);
@@ -218,6 +254,9 @@ private:
         tryLoad(config, "wheel_quality_high_current_threshold", wheel_quality_high_current_threshold_);
         tryLoad(config, "wheel_quality_high_duty_threshold",    wheel_quality_high_duty_threshold_);
         tryLoad(config, "wheel_quality_min_weight",             wheel_quality_min_weight_);
+
+        tryLoad(config, "enable_coherence_safety",        enable_coherence_safety_);
+        tryLoad(config, "steering_coherence_threshold",   steering_coherence_threshold_);
 
         // Canonical key wins; trailing-underscore key is a legacy fallback only.
         if (config["cmd_vel_autonomy_topic"])
@@ -273,17 +312,17 @@ private:
     double max_wheel_speed_mps_{0.0};
 
     // ── Fields — Steering geometry ────────────────────────────────────────────
-    double max_mechanical_angle_   {1.57};
+    // Per-wheel arrays: index [FL=0, FR=1, RL=2, RR=3]
+    std::array<double, 4> min_mechanical_angle_ {-1.57, -1.57, -1.57, -1.57};
+    std::array<double, 4> max_mechanical_angle_ { 1.57,  1.57,  1.57,  1.57};
     double max_steering_radius_    {5.0};
     double min_steering_radius_    {1.0};
     double max_steering_angle_deg_ {90.0};
     double max_steering_angle_rad_ {1.57};
 
-    // ── Fields — Motor polarity ───────────────────────────────────────────────
-    bool invert_right_drive_    {false};
-    bool invert_right_steering_ {true};
-    bool invert_left_drive_     {false};
-    bool invert_left_steering_  {true};
+    // ── Fields — Motor polarity (per-wheel arrays: FL=0, FR=1, RL=2, RR=3) ───────────
+    std::array<bool, 4> invert_drive_    {false, false, false, false};
+    std::array<bool, 4> invert_steering_ {true,  true,  true,  true};
 
     // ── Fields — Covariance ───────────────────────────────────────────────────
     std::vector<double> pose_covariance_diagonal_  {0.001, 0.001, 0.001, 0.001, 0.001, 0.001};
@@ -299,9 +338,12 @@ private:
     bool        use_sim_time_              {false};
     std::string base_frame_id_             {"/base_footprint"};
     std::string odom_frame_id_             {"/odom"};
-    bool        enable_odom_tf_            {false};
+    bool        publish_tf_            {false};
     bool        use_measurement_timestamp_ {false};
     std::string cmd_vel_autonomy_topic_    {"/cmd_vel"};
+    double      cmd_vel_timeout_sec_        {0.5};
+    double      initialization_timeout_sec_ {5.0};
+    double      stop_timeout_sec_           {5.0};
 
     // ── Fields — Estimator tuning ─────────────────────────────────────────────
     double steering_angle_deadband_deg_     {0.5};
@@ -315,6 +357,10 @@ private:
     double wheel_quality_high_current_threshold_ {20.0};
     double wheel_quality_high_duty_threshold_    {0.85};
     double wheel_quality_min_weight_             {0.0};
+
+    // ── Fields — Coherence safety ────────────────────────────────────────
+    bool   enable_coherence_safety_        {true};
+    double steering_coherence_threshold_   {0.15};
 
     // ── Fields — Ceres solver ─────────────────────────────────────────────────
     int    solver_max_num_iterations_          {200};

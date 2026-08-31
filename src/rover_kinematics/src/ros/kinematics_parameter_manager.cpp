@@ -70,6 +70,47 @@ KinematicsParameterManager::kParams = {
   },
 
   // ── Steering geometry ────────────────────────────────────────────────────────
+  // Per-wheel mechanical angle limits [fl=0, fr=1, rl=2, rr=3]
+  { "min_mechanical_angle_fl", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.min_mechanical_angle(0)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.min_mechanical_angle_[0] = p.as_double(); },
+    nullptr
+  },
+  { "min_mechanical_angle_fr", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.min_mechanical_angle(1)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.min_mechanical_angle_[1] = p.as_double(); },
+    nullptr
+  },
+  { "min_mechanical_angle_rl", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.min_mechanical_angle(2)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.min_mechanical_angle_[2] = p.as_double(); },
+    nullptr
+  },
+  { "min_mechanical_angle_rr", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.min_mechanical_angle(3)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.min_mechanical_angle_[3] = p.as_double(); },
+    nullptr
+  },
+  { "max_mechanical_angle_fl", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.max_mechanical_angle(0)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.max_mechanical_angle_[0] = p.as_double(); },
+    nullptr
+  },
+  { "max_mechanical_angle_fr", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.max_mechanical_angle(1)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.max_mechanical_angle_[1] = p.as_double(); },
+    nullptr
+  },
+  { "max_mechanical_angle_rl", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.max_mechanical_angle(2)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.max_mechanical_angle_[2] = p.as_double(); },
+    nullptr
+  },
+  { "max_mechanical_angle_rr", kSolver,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.max_mechanical_angle(3)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.max_mechanical_angle_[3] = p.as_double(); },
+    nullptr
+  },
   { "min_steering_radius", kSolver,
     [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.min_steering_radius()); },
     [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.min_steering_radius_ = p.as_double(); },
@@ -177,6 +218,20 @@ KinematicsParameterManager::kParams = {
     nullptr
   },
 
+  // ── Coherence safety ──────────────────────────────────────────────────────────
+  { "enable_coherence_safety", kNone,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.enable_coherence_safety()); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.enable_coherence_safety_ = p.as_bool(); },
+    nullptr
+  },
+  { "steering_coherence_threshold", kNone,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.steering_coherence_threshold()); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.steering_coherence_threshold_ = p.as_double(); },
+    [](const rclcpp::Parameter& p) -> std::string {
+        return (p.as_double() > 0.0 && p.as_double() <= 1.0) ? "" : "steering_coherence_threshold must be in (0, 1]";
+    }
+  },
+
   // ── Frames, topics & flags ────────────────────────────────────────────────────
   // base/odom frame IDs propagate to the estimator (which reinitialises its odom msg).
   { "base_frame_id", kEstimator,
@@ -189,16 +244,37 @@ KinematicsParameterManager::kParams = {
     [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.odom_frame_id_ = p.as_string(); },
     nullptr
   },
-  // enable_odom_tf, use_measurement_timestamp: node reads via friend access each cycle.
-  { "enable_odom_tf", kNone,
-    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.enable_odom_tf()); },
-    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.enable_odom_tf_ = p.as_bool(); },
+  // publish_tf, use_measurement_timestamp: node reads via friend access each cycle.
+  { "publish_tf", kNone,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.publish_tf()); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.publish_tf_ = p.as_bool(); },
     nullptr
   },
   { "use_measurement_timestamp", kNone,
     [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.use_measurement_timestamp()); },
     [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.use_measurement_timestamp_ = p.as_bool(); },
     nullptr
+  },
+  { "cmd_vel_timeout_sec", kNone,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.cmd_vel_timeout_sec()); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.cmd_vel_timeout_sec_ = p.as_double(); },
+    [](const rclcpp::Parameter& p) -> std::string {
+        return p.as_double() > 0.0 ? "" : "cmd_vel_timeout_sec must be > 0";
+    }
+  },
+  { "initialization_timeout_sec", kNone,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.initialization_timeout_sec()); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.initialization_timeout_sec_ = p.as_double(); },
+    [](const rclcpp::Parameter& p) -> std::string {
+        return p.as_double() > 0.0 ? "" : "initialization_timeout_sec must be > 0";
+    }
+  },
+  { "stop_timeout_sec", kNone,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.stop_timeout_sec()); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.stop_timeout_sec_ = p.as_double(); },
+    [](const rclcpp::Parameter& p) -> std::string {
+        return p.as_double() > 0.0 ? "" : "stop_timeout_sec must be > 0";
+    }
   },
   // cmd_vel_autonomy_topic: subscription is created at startup; live re-subscription
   // not supported — update takes effect only after node restart.
@@ -208,25 +284,45 @@ KinematicsParameterManager::kParams = {
     nullptr
   },
 
-  // ── Motor polarity ────────────────────────────────────────────────────────────
-  { "invert_right_drive", kHardware,
-    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_right_drive()); },
-    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_right_drive_ = p.as_bool(); },
+  // ── Motor polarity (per-wheel: FL=0, FR=1, RL=2, RR=3) ─────────────────────
+  { "invert_drive_fl", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_drive(0)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_drive_[0] = p.as_bool(); },
     nullptr
   },
-  { "invert_left_drive", kHardware,
-    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_left_drive()); },
-    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_left_drive_ = p.as_bool(); },
+  { "invert_drive_fr", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_drive(1)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_drive_[1] = p.as_bool(); },
     nullptr
   },
-  { "invert_right_steering", kHardware,
-    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_right_steering()); },
-    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_right_steering_ = p.as_bool(); },
+  { "invert_drive_rl", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_drive(2)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_drive_[2] = p.as_bool(); },
     nullptr
   },
-  { "invert_left_steering", kHardware,
-    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_left_steering()); },
-    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_left_steering_ = p.as_bool(); },
+  { "invert_drive_rr", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_drive(3)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_drive_[3] = p.as_bool(); },
+    nullptr
+  },
+  { "invert_steering_fl", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_steering(0)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_steering_[0] = p.as_bool(); },
+    nullptr
+  },
+  { "invert_steering_fr", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_steering(1)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_steering_[1] = p.as_bool(); },
+    nullptr
+  },
+  { "invert_steering_rl", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_steering(2)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_steering_[2] = p.as_bool(); },
+    nullptr
+  },
+  { "invert_steering_rr", kHardware,
+    [](const KinematicsConfig& c) { return rclcpp::ParameterValue(c.invert_steering(3)); },
+    [](const rclcpp::Parameter& p, KinematicsConfig& c) { c.invert_steering_[3] = p.as_bool(); },
     nullptr
   },
 

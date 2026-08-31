@@ -1,5 +1,6 @@
 #include "rover_kinematics/ros/kinematics_node.hpp"
 
+#include <Eigen/Dense>
 #include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
@@ -328,69 +329,158 @@ void KinematicsNode::updateWatchdog(const rclcpp::Time &current_time) {
   }
 }
 
+double KinematicsNode::getPhysicalAngleRad(double measured_value, std::size_t wheel_index) const {
+  double val = measured_value;
+  // Remove hardware polarity inversion to get raw degrees
+  if (config_.invert_steering(wheel_index)) val = -val;
+  // Convert degrees to radians (measured_value is in degrees as per HardwareInterface)
+  return val * (M_PI / 180.0);
+}
+
+bool KinematicsNode::isMechanicallySafe(const rex_interfaces::msg::Wheels &feedback) const {
+  const auto is_outside_limits = [&](double measured_value, std::size_t wheel_index) {
+    const double physical_angle_rad = getPhysicalAngleRad(measured_value, wheel_index);
+    const double epsilon = 1e-3; // small margin for floating point errors
+    return physical_angle_rad < (config_.min_mechanical_angle(wheel_index) - epsilon) ||
+           physical_angle_rad > (config_.max_mechanical_angle(wheel_index) + epsilon);
+  };
+
+  const bool out_of_bounds = is_outside_limits(feedback.front_left.turn.set_value, 0) ||
+                             is_outside_limits(feedback.front_right.turn.set_value, 1) ||
+                             is_outside_limits(feedback.rear_left.turn.set_value, 2) ||
+                             is_outside_limits(feedback.rear_right.turn.set_value, 3);
+
+  if (out_of_bounds) {
+    const auto& mn = config_.min_mechanical_angles();
+    const auto& mx = config_.max_mechanical_angles();
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                         "Mechanical limit safety active: drive disabled. "
+                         "Limits [FL:%.2f..%.2f  FR:%.2f..%.2f  RL:%.2f..%.2f  RR:%.2f..%.2f] rad",
+                         mn[0], mx[0], mn[1], mx[1], mn[2], mx[2], mn[3], mx[3]);
+    return false;
+  }
+  return true;
+}
+
+bool KinematicsNode::isSteeringCoherent(const rex_interfaces::msg::Wheels &target,
+                                        const rex_interfaces::msg::Wheels &feedback) const {
+  if (!config_.enable_coherence_safety()) {
+    return true;
+  }
+
+  // Only run the coherence check when at least one wheel is commanding drive velocity.
+  const bool any_drive_commanded =
+    std::fabs(target.front_left.drive.set_value)  > 1e-6 ||
+    std::fabs(target.front_right.drive.set_value) > 1e-6 ||
+    std::fabs(target.rear_left.drive.set_value)   > 1e-6 ||
+    std::fabs(target.rear_right.drive.set_value)  > 1e-6;
+
+  if (!any_drive_commanded) {
+    return true;
+  }
+
+  const std::array<double, 4> steer_rad = {
+    getPhysicalAngleRad(feedback.front_left.turn.set_value,  0),
+    getPhysicalAngleRad(feedback.front_right.turn.set_value, 1),
+    getPhysicalAngleRad(feedback.rear_left.turn.set_value,   2),
+    getPhysicalAngleRad(feedback.rear_right.turn.set_value,  3),
+  };
+
+  const double coherence_error = computeSteeringCoherence(steer_rad);
+
+  if (coherence_error > config_.steering_coherence_threshold()) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 500,
+                         "Coherence safety active: steering incoherence %.3f > threshold %.3f. "
+                         "Drive disabled until wheels align. angles=[%.2f, %.2f, %.2f, %.2f] rad",
+                         coherence_error, config_.steering_coherence_threshold(),
+                         steer_rad[0], steer_rad[1], steer_rad[2], steer_rad[3]);
+    return false;
+  }
+  return true;
+}
+
 void KinematicsNode::applySteeringFirstSafety(
     rex_interfaces::msg::Wheels &target,
     const rex_interfaces::msg::Wheels &feedback,
-    double angle_tolerance_deg) {
-  const auto normalize_for_wheel = [&](double value, std::size_t wheel_index) {
-    double normalized = value;
-    const bool is_right = (wheel_index == 1 || wheel_index == 3);
+    double /* angle_tolerance_deg */) {
 
-    if (is_right && config_.invert_right_steering()) {
-      normalized = -normalized;
-    }
-    if (!is_right && config_.invert_left_steering()) {
-      normalized = -normalized;
-    }
-
-    return normalized;
-  };
-
-  const auto steer_ok = [&](double target_value, double measured_value,
-                           std::size_t wheel_index) {
-    const double target_normalized = normalize_for_wheel(
-        target_value / static_cast<double>(STEER_PRESCALE), wheel_index);
-    const double measured_normalized = normalize_for_wheel(measured_value, wheel_index);
-
-    // Some steering setups report the encoder with the opposite sign convention.
-    // Accept either the direct sign or the inverted sign so a configured wheel
-    // inversion does not trip the safety when the wheel is already at the target
-    // angle.
-    const double direct_error_deg = std::abs(target_normalized - measured_normalized);
-    const double flipped_error_deg = std::abs(target_normalized + measured_normalized);
-    const double error_deg = std::min(direct_error_deg, flipped_error_deg);
-
-    return error_deg <= std::max(0.0, angle_tolerance_deg);
-  };
-
-  const bool ready = steer_ok(target.front_left.turn.set_value, feedback.front_left.turn.set_value, 0) &&
-                     steer_ok(target.front_right.turn.set_value, feedback.front_right.turn.set_value, 1) &&
-                     steer_ok(target.rear_left.turn.set_value, feedback.rear_left.turn.set_value, 2) &&
-                     steer_ok(target.rear_right.turn.set_value, feedback.rear_right.turn.set_value, 3);
-
-  if (!ready) {
+  // 1. Mechanical Limits Check
+  // Ensures steering actuators haven't rotated past physical boundaries.
+  if (!isMechanicallySafe(feedback)) {
     target.front_left.drive.set_value = 0.0;
     target.front_right.drive.set_value = 0.0;
     target.rear_left.drive.set_value = 0.0;
     target.rear_right.drive.set_value = 0.0;
+    return; // Takes priority — don't run coherence check if mechanically jammed
+  }
 
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-                         "Steering-first safety active: blocking drive until steering reaches target. "
-                         "target=[%.2f, %.2f, %.2f, %.2f], measured=[%.2f, %.2f, %.2f, %.2f]",
-                         normalize_for_wheel(target.front_left.turn.set_value / static_cast<double>(STEER_PRESCALE), 0),
-                         normalize_for_wheel(target.front_right.turn.set_value / static_cast<double>(STEER_PRESCALE), 1),
-                         normalize_for_wheel(target.rear_left.turn.set_value / static_cast<double>(STEER_PRESCALE), 2),
-                         normalize_for_wheel(target.rear_right.turn.set_value / static_cast<double>(STEER_PRESCALE), 3),
-                         normalize_for_wheel(feedback.front_left.turn.set_value, 0),
-                         normalize_for_wheel(feedback.front_right.turn.set_value, 1),
-                         normalize_for_wheel(feedback.rear_left.turn.set_value, 2),
-                         normalize_for_wheel(feedback.rear_right.turn.set_value, 3));
+  // 2. Steering Coherence Check (Instantaneous Velocity Agreement)
+  // Ensures the wheels are pointing in consistent directions before driving.
+  if (!isSteeringCoherent(target, feedback)) {
+    target.front_left.drive.set_value = 0.0;
+    target.front_right.drive.set_value = 0.0;
+    target.rear_left.drive.set_value = 0.0;
+    target.rear_right.drive.set_value = 0.0;
+    return;
   }
 }
 
 //
 // // ─ ─ Loop ─ ─
 //
+
+/**
+ * @brief Fits a rigid-body twist (Vx, Vy, ω) to the four wheel unit-direction
+ *        vectors derived from @p steer_angles_rad, using the closed-form 3×3
+ *        normal equations instead of an iterative solver.
+ *
+ * Each wheel contributes two kinematic constraints:
+ *   cos(θᵢ) = Vx − ω·yᵢ
+ *   sin(θᵢ) = Vy + ω·xᵢ
+ *
+ * Stacking these into  A·x = b  (8×3 system, x = [Vx, Vy, ω]ᵀ) and solving
+ * via normal equations  (AᵀA)·x = Aᵀb  gives the least-squares best-fit
+ * rigid body motion.  The mean squared residual per wheel (normalised to [0,1]
+ * by the worst-case residual of 2.0) is then returned as the coherence score.
+ *
+ * @return Normalised coherence error in [0, 1].  0 = perfect agreement;
+ *         values above config_.steering_coherence_threshold() block drive.
+ */
+double KinematicsNode::computeSteeringCoherence(
+    const std::array<double, 4> &steer_angles_rad) const {
+
+  // Wheel positions in the robot body frame [FL, FR, RL, RR].
+  // x: positive = forward (front axle),  y: positive = left.
+  const double half_wb = config_.wheelbase()  / 2.0;
+  const double half_tw = config_.track_width() / 2.0;
+  const double wx[4] = { half_wb,  half_wb, -half_wb, -half_wb };
+  const double wy[4] = { half_tw, -half_tw,  half_tw, -half_tw };
+
+  // Build the 8×3 matrix A and the 8-vector b.
+  // Row 2i:   [1, 0, -yᵢ]  →  cos(θᵢ)
+  // Row 2i+1: [0, 1,  xᵢ]  →  sin(θᵢ)
+  Eigen::Matrix<double, 8, 3> A;
+  Eigen::Matrix<double, 8, 1> b;
+
+  for (int i = 0; i < 4; ++i) {
+    A(2*i,     0) =  1.0;  A(2*i,     1) = 0.0;  A(2*i,     2) = -wy[i];
+    A(2*i + 1, 0) =  0.0;  A(2*i + 1, 1) = 1.0;  A(2*i + 1, 2) =  wx[i];
+    b(2*i)     = std::cos(steer_angles_rad[i]);
+    b(2*i + 1) = std::sin(steer_angles_rad[i]);
+  }
+
+  // Solve the 3×3 normal equations: (AᵀA) x = Aᵀb.
+  // ldlt() is numerically stable for small positive-semidefinite systems.
+  const Eigen::Matrix<double, 3, 1> x =
+      (A.transpose() * A).ldlt().solve(A.transpose() * b);
+
+  // Compute the mean squared residual per wheel, normalised by the theoretical
+  // worst-case value of 2.0 (unit vectors completely anti-aligned).
+  const Eigen::Matrix<double, 8, 1> residual = b - A * x;
+  const double mean_sq_residual = residual.squaredNorm() / 4.0; // 8 rows / 2 per wheel
+  constexpr double WORST_CASE = 2.0;
+  return std::min(mean_sq_residual / WORST_CASE, 1.0);
+}
 
 void KinematicsNode::onUpdate() {
   const rclcpp::Time current_time = this->get_clock()->now();
@@ -410,13 +500,15 @@ void KinematicsNode::onUpdate() {
 
     if (estimate.valid) {
       odom_pub_->publish(estimate.odometry);
-      if (config_.enable_odom_tf()) {
+      if (config_.publish_tf()) {
         tf_odom_pub_->publish(estimate.transform);
       }
     }
   }
 
   auto cmd = *(rover_cmd_velocity_buffer_.readFromNonRT());
+
+
   rex_interfaces::msg::Wheels target_wheels_msg;
 
   // ─ ─ 
@@ -427,11 +519,25 @@ void KinematicsNode::onUpdate() {
     initialization_time_ns_.store(initialization_ns, std::memory_order_release);
   }
   
-  if (current_time.nanoseconds() - initialization_ns <= 5LL * 1'000'000'000LL) {
+  if (current_time.nanoseconds() - initialization_ns <= static_cast<int64_t>(config_.initialization_timeout_sec() * 1e9)) {
     target_wheels_msg = assembleSetOriginMessage(current_time);
     rover_wheels_velocity_ = target_wheels_msg;
     wheels_vel_pub_->publish(rover_wheels_velocity_);
     return;
+  }
+
+  // ─ ─ 
+
+  const int64_t last_cmd_ns = last_cmd_vel_time_ns_.load(std::memory_order_acquire);
+  const double elapsed_cmd_sec = (current_time.nanoseconds() - last_cmd_ns) / 1e9;
+
+  if (last_cmd_ns != 0 && elapsed_cmd_sec > config_.cmd_vel_timeout_sec()) {
+    cmd.vel    = 0.0;
+    cmd.x_axis = 0.0;
+    cmd.y_axis = 0.0;
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                         "cmd_vel timeout! No command received for %.2fs (limit: %.2fs). Braking.",
+                         elapsed_cmd_sec, config_.cmd_vel_timeout_sec());
   }
 
   // ─ ─ 
@@ -463,7 +569,7 @@ void KinematicsNode::onUpdate() {
       last_kinematics_active_time_ns_.store(current_time.nanoseconds(), std::memory_order_release);
     } else {
       const int64_t last_ns = last_kinematics_active_time_ns_.load(std::memory_order_acquire);
-      if (current_time.nanoseconds() - last_ns <= 5LL * 1'000'000'000LL) {
+      if (current_time.nanoseconds() - last_ns <= static_cast<int64_t>(config_.stop_timeout_sec() * 1e9)) {
         target_wheels_msg = assembleStopMessage(current_time);
         message_already_assembled = true;
       } else {
@@ -537,6 +643,14 @@ void KinematicsNode::onUpdate() {
         }
       }
 
+      // Clamp target steering commands to per-wheel mechanical limits
+      for (int i = 0; i < 4; ++i) {
+        target_ik.steering_angle_rad[i] = std::clamp(
+            target_ik.steering_angle_rad[i],
+            config_.min_mechanical_angle(i),
+            config_.max_mechanical_angle(i));
+      }
+
       target_wheels_msg = assembleWheelsFromCommand(target_ik, current_time);
     }
   } else {
@@ -577,7 +691,8 @@ void KinematicsNode::onUpdate() {
   // velocity while the steering is still moving between the previous and next
   // target orientation, which can damage the robot when switching back to an
   // Ackermann or crab/spin mode.
-  const bool is_drive_mode = (control_mode_.load(std::memory_order_acquire) & ControlMode::DRIVE) != 0;
+  // We want this safety to apply whenever any sort of drive command is active
+  const bool is_drive_mode = (control_mode_.load(std::memory_order_acquire) & (ControlMode::DRIVE | ControlMode::DRIVE_AUTONOMY)) != 0;
   const bool requires_steering_alignment = is_drive_mode &&
       cmd.mode != DriveMode::BRAKE &&
       cmd.mode != DriveMode::HANDBRAKE &&
@@ -585,7 +700,7 @@ void KinematicsNode::onUpdate() {
 
   if (requires_steering_alignment) {
     const auto feedback_msg = *(rover_wheels_velocity_feedback_buffer_.readFromNonRT());
-    applySteeringFirstSafety(target_wheels_msg, feedback_msg, 2.5);
+    applySteeringFirstSafety(target_wheels_msg, feedback_msg, 0.0);
   }
 
   rover_wheels_velocity_ = target_wheels_msg;
@@ -610,6 +725,8 @@ void KinematicsNode::statusCallback(
  */
 void KinematicsNode::cmdVelManualCallback(
     const rex_interfaces::msg::RoverControl::SharedPtr msg) {
+  last_cmd_vel_time_ns_.store(this->get_clock()->now().nanoseconds(), std::memory_order_release);
+
   if (control_mode_.load(std::memory_order_acquire) & ControlMode::DRIVE) {
     rex_interfaces::msg::RoverControl cmd_vel;
 
@@ -633,6 +750,8 @@ void KinematicsNode::cmdVelManualCallback(
  */
 void KinematicsNode::cmdVelAutonomyCallback(
     const geometry_msgs::msg::Twist::SharedPtr msg) {
+  last_cmd_vel_time_ns_.store(this->get_clock()->now().nanoseconds(), std::memory_order_release);
+
   if (control_mode_.load(std::memory_order_acquire) & ControlMode::DRIVE_AUTONOMY) {
     rex_interfaces::msg::RoverControl cmd_vel;
 
