@@ -171,7 +171,8 @@ private:
   ///        A value near 0 means all wheels agree on a coherent motion; a value
   ///        near 1 (or above the configured threshold) means the chassis is in a
   ///        destructively incoherent configuration.
-  double computeSteeringCoherence(const std::array<double, 4> &steer_angles_rad) const;
+  double computeSteeringCoherence(const std::array<double, 4> &steer_angles_rad,
+                                  const std::array<double, 4> &drive_speeds) const;
 
   // // ─ ─ 
 

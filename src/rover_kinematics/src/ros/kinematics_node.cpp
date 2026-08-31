@@ -330,10 +330,11 @@ void KinematicsNode::updateWatchdog(const rclcpp::Time &current_time) {
 }
 
 double KinematicsNode::getPhysicalAngleRad(double measured_value, std::size_t wheel_index) const {
+  (void)wheel_index; // Unused, hardware interface already applied polarity
   double val = measured_value;
-  // Remove hardware polarity inversion to get raw degrees
-  if (config_.invert_steering(wheel_index)) val = -val;
-  // Convert degrees to radians (measured_value is in degrees as per HardwareInterface)
+  // Hardware polarity inversion is already removed by HardwareInterface::steeringSetFromPrecisePos,
+  // so measured_value is already the true physical angle in degrees.
+  // Convert degrees to radians
   return val * (M_PI / 180.0);
 }
 
@@ -386,7 +387,14 @@ bool KinematicsNode::isSteeringCoherent(const rex_interfaces::msg::Wheels &targe
     getPhysicalAngleRad(feedback.rear_right.turn.set_value,  3),
   };
 
-  const double coherence_error = computeSteeringCoherence(steer_rad);
+  const std::array<double, 4> drive_speeds = {
+    target.front_left.drive.set_value,
+    target.front_right.drive.set_value,
+    target.rear_left.drive.set_value,
+    target.rear_right.drive.set_value,
+  };
+
+  const double coherence_error = computeSteeringCoherence(steer_rad, drive_speeds);
 
   if (coherence_error > config_.steering_coherence_threshold()) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 500,
@@ -447,7 +455,8 @@ void KinematicsNode::applySteeringFirstSafety(
  *         values above config_.steering_coherence_threshold() block drive.
  */
 double KinematicsNode::computeSteeringCoherence(
-    const std::array<double, 4> &steer_angles_rad) const {
+    const std::array<double, 4> &steer_angles_rad,
+    const std::array<double, 4> &drive_speeds) const {
 
   // Wheel positions in the robot body frame [FL, FR, RL, RR].
   // x: positive = forward (front axle),  y: positive = left.
@@ -462,11 +471,23 @@ double KinematicsNode::computeSteeringCoherence(
   Eigen::Matrix<double, 8, 3> A;
   Eigen::Matrix<double, 8, 1> b;
 
+  // Find the maximum speed to normalize the velocity vectors.
+  // This prevents the residual from scaling with absolute speed, while preserving the
+  // relative velocities which are required for a valid rigid body twist (e.g. Ackerman inner vs outer).
+  double max_speed = 1e-6;
+  for (int i = 0; i < 4; ++i) {
+    max_speed = std::max(max_speed, std::abs(drive_speeds[i]));
+  }
+
   for (int i = 0; i < 4; ++i) {
     A(2*i,     0) =  1.0;  A(2*i,     1) = 0.0;  A(2*i,     2) = -wy[i];
     A(2*i + 1, 0) =  0.0;  A(2*i + 1, 1) = 1.0;  A(2*i + 1, 2) =  wx[i];
-    b(2*i)     = std::cos(steer_angles_rad[i]);
-    b(2*i + 1) = std::sin(steer_angles_rad[i]);
+    
+    // Scale the direction vector by the normalized target speed.
+    // This perfectly reconstructs the commanded rigid body velocity field.
+    const double v = drive_speeds[i] / max_speed;
+    b(2*i)     = v * std::cos(steer_angles_rad[i]);
+    b(2*i + 1) = v * std::sin(steer_angles_rad[i]);
   }
 
   // Solve the 3×3 normal equations: (AᵀA) x = Aᵀb.

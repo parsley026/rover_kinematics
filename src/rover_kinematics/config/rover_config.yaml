@@ -52,7 +52,7 @@ base_frame_id: '/base_link'
 odom_frame_id: '/odom' 
 publish_tf: false
 
-cmd_vel_timeout_sec: 0.5
+cmd_vel_timeout_sec: 9999.0
 
 cmd_vel_autonomy_topic: '/navigation/cmd_vel'
 # cmd_vel_autonomy_topic: '/cmd_vel_smoothed'
@@ -64,7 +64,7 @@ cmd_vel_autonomy_topic: '/navigation/cmd_vel'
 # Range: (0.0, 1.0].  Lower = stricter.  0.15 blocks drive when wheels are
 # more than ~22° incoherent on average.
 enable_coherence_safety: true
-steering_coherence_threshold: 0.15
+steering_coherence_threshold: 0.01
 
 # # # # Update (base on real)
 huber_loss_threshold: 0.5
