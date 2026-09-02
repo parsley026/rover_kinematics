@@ -8,6 +8,8 @@ services:
     image: rover-kinematics
     container_name: rover-kinematics
     hostname: rover-kinematics
+    extra_hosts:
+      - "rover-kinematics=127.0.0.1"
     stdin_open: true
     tty: true
     pid: "host"
@@ -24,13 +26,16 @@ services:
         source: ./
         target: /mnt/local
         bind:
-          create_host_path: true
+          create_host_path: false
       - type: bind
         source: ./.devcontainer/rex
         target: /etc/init.d/rex
         bind:
-          create_host_path: true
+          create_host_path: false
       - type: bind
-        source: /dev/shm
-        target: /dev/shm
+        source: "${REX_CONTAINER_AUTHORIZED_KEYS:-/dev/null}"
+        target: /run/secrets/authorized_keys
+        read_only: true # Make sure this stays read-only!
+        bind:
+          create_host_path: false
     restart: unless-stopped
